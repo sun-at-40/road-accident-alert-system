@@ -1,0 +1,12 @@
+numpy
+pandas
+matplotlib
+tensorflow
+opencv-python
+pillow
+twilio
+jupyter
+ipykernel
+keras
+flask
+

@@ -1,0 +1,9 @@
+credentials.txt
+.env
+__pycache__/
+*.py[cod]
+accident_photos/
+__pycache__/
+*.py[cod]
+accident_photos/
+data/
