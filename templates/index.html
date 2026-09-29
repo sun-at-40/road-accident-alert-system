@@ -4,15 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Road Incident Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
   <style>
     :root { --ink: #172026; --muted: #69767c; --paper: #f4f0e8; --panel: #fffdf8; --accent: #e15a3d; --line: #d9d2c5; --green: #237a61; }
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--ink); background: radial-gradient(circle at 100% 0, #f2c7a7 0, transparent 35%), var(--paper); font-family: Georgia, 'Times New Roman', serif; }
-    main { width: min(1080px, calc(100% - 36px)); margin: 0 auto; padding: 56px 0 80px; }
-    header { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 28px; }
-    h1 { font-size: clamp(2.5rem, 7vw, 5.8rem); line-height: .9; letter-spacing: -2px; margin: 0; max-width: 680px; font-weight: 500; }
+    main { width: min(1080px, calc(100% - 36px)); margin: 0 auto; padding: 24px 0 80px; }
+    h1 { font-size: 3rem; line-height: .98; margin: 0; max-width: 680px; font-weight: 500; }
     .eyebrow { color: var(--accent); font: 700 12px/1.2 Arial, sans-serif; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; }
-    .status { color: var(--muted); font: 13px Arial, sans-serif; text-align: right; }
+    .home-hero { position: relative; min-height: 340px; margin: 22px 0 24px; overflow: hidden; background: #294239; }
+    .hero-image, .hero-shade { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .hero-image { object-fit: cover; object-position: center 86%; }
+    .hero-shade { background: rgba(13, 23, 23, .44); }
+    .hero-copy { position: absolute; z-index: 1; left: 34px; bottom: 42px; max-width: 700px; color: #fff; }
+    .hero-copy .eyebrow { color: #f2c7a7; }
+    .hero-copy p { max-width: 530px; color: #fff; font: 17px/1.5 Arial, sans-serif; margin: 14px 0 0; text-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+    .hero-copy h1 { text-shadow: 0 2px 9px rgba(0, 0, 0, .55); }
+    .hero-credit { position: absolute; z-index: 1; right: 12px; bottom: 10px; max-width: calc(100% - 24px); color: #fff; background: rgba(13, 23, 23, .72); padding: 6px 9px; font: 10px/1.4 Arial, sans-serif; text-decoration: none; }
+    .hero-credit:hover { text-decoration: underline; }
     .workspace { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 22px; margin-top: 24px; }
     .panel { background: var(--panel); border: 1px solid var(--line); padding: 26px; box-shadow: 0 10px 30px rgba(70, 52, 32, .08); }
     .dropzone { min-height: 300px; border: 1px dashed #b5aa9b; display: grid; place-items: center; text-align: center; padding: 28px; cursor: pointer; transition: border-color .2s, background .2s; }
@@ -27,56 +36,45 @@
     p, li { color: var(--muted); font: 15px/1.55 Arial, sans-serif; }
     ul { padding-left: 20px; }
     .error { margin-top: 18px; padding: 14px; background: #f9dfd8; color: #8a2d1d; font: 14px Arial, sans-serif; }
-    .result { margin-top: 24px; }
-    video { width: 100%; display: block; background: #172026; margin: 16px 0; }
-    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
-    .metric { border-top: 2px solid var(--accent); padding-top: 9px; }
-    .metric b { display: block; font-size: 1.8rem; font-weight: 500; }
-    .metric span { color: var(--muted); font: 11px Arial, sans-serif; text-transform: uppercase; letter-spacing: .7px; }
-    @media (max-width: 760px) { main { padding-top: 32px; } header, .workspace { display: block; } .status { text-align: left; margin-top: 18px; } .panel { margin-top: 16px; } }
+    @media (max-width: 760px) { main { padding-top: 16px; } .home-hero { min-height: 300px; margin-top: 16px; } .hero-copy { left: 20px; right: 20px; bottom: 48px; } .hero-copy h1 { font-size: 2.25rem; } .hero-copy p { font-size: 15px; } .workspace { display: block; } .panel { margin-top: 16px; } }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <div><div class="eyebrow">Road accident detection</div><h1>Inspect a video.<br>See the signal.</h1></div>
-      <div class="status">Local processing<br>Files stay on this computer</div>
-    </header>
+    {% set active_page = 'home' %}
+    {% include '_topbar.html' %}
+    <section class="home-hero" aria-labelledby="home-title">
+      <img class="hero-image" src="{{ url_for('static', filename='images/nilgiris-highway-traffic.jpg') }}" alt="Traffic along NH-181 near Frog Hill in the Nilgiris, Tamil Nadu">
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="hero-copy">
+        <div class="eyebrow">Road safety | Dindigul and nearby areas</div>
+        <h1 id="home-title">Road Incident Monitor</h1>
+        <p>Review road footage and follow accident signals across the region.</p>
+      </div>
+      <a class="hero-credit" href="https://commons.wikimedia.org/wiki/File:Frog_Hill_Traffic_NH-181_Nilgiris_Aug25_A7CR_07364.jpg" target="_blank" rel="noopener noreferrer">NH-181, Nilgiris | Photo: Timothy A. Gonsalves / Wikimedia Commons | CC BY-SA 4.0</a>
+    </section>
 
     <section class="workspace">
-      <form class="panel" method="post" enctype="multipart/form-data">
+      <form id="upload-form" class="panel" action="{{ url_for('analyze') }}" method="post" enctype="multipart/form-data">
         <label class="dropzone" for="video">
           <div><strong id="filename">Choose a test video</strong><span>MP4, AVI, MOV, MKV, or WEBM</span></div>
         </label>
         <input id="video" name="video" type="file" accept="video/*" required>
-        <button class="submit" type="submit">Analyze video</button>
-        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <button id="submit-button" class="submit" type="submit">Analyze video</button>
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
       </form>
 
       <aside class="panel">
         <h2>What happens here</h2>
         <ul>
-          <li>The uploaded video is analyzed frame by frame with the trained Keras classifier.</li>
+          <li>The selected video plays here while the trained Keras classifier reports each prediction.</li>
           <li>Predictions are drawn onto a new processed video.</li>
           <li>The original upload is removed after processing.</li>
         </ul>
-        <p>Long videos may take several minutes on CPU.</p>
+        <p>Analysis runs locally. Longer videos may take several minutes on CPU.</p>
       </aside>
     </section>
 
-    {% if result %}
-    <section class="panel result">
-      <div class="eyebrow">Analysis complete</div>
-      <h2>Processed result</h2>
-      <div class="metrics">
-        <div class="metric"><b>{{ result.frames }}</b><span>Frames scanned</span></div>
-        <div class="metric"><b>{{ result.accident_frames }}</b><span>Accident frames</span></div>
-        <div class="metric"><b>{{ result.highest_probability }}%</b><span>Highest confidence</span></div>
-      </div>
-      <video controls src="{{ url_for('results', filename=result.video) }}"></video>
-      <a class="download" href="{{ url_for('download', filename=result.video) }}">Download processed video</a>
-    </section>
-    {% endif %}
   </main>
   <script>
     const input = document.getElementById('video');

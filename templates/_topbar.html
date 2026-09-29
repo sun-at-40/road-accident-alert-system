@@ -1,0 +1,11 @@
+<nav class="site-nav" aria-label="Main navigation">
+  <a class="site-brand" href="{{ url_for('index') }}">
+    <span class="brand-mark" aria-hidden="true">R</span>
+    <span class="brand-copy"><strong>Road Incident Monitor</strong><small>Dindigul | Tamil Nadu</small></span>
+  </a>
+  <div class="nav-links">
+    <a href="{{ url_for('index') }}" {% if active_page == 'home' %}aria-current="page"{% endif %}>Home</a>
+    <a href="{{ url_for('area_period_report') }}" {% if active_page == 'areas' %}aria-current="page"{% endif %}>Area report</a>
+    <a href="{{ url_for('incident_report') }}" {% if active_page == 'incidents' %}aria-current="page"{% endif %}>Incident report</a>
+  </div>
+</nav>

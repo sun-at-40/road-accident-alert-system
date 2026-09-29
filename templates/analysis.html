@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Analysis | Road Incident Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+  <style>
+    :root { --ink: #172026; --muted: #69767c; --paper: #f4f0e8; --panel: #fffdf8; --accent: #e15a3d; --line: #d9d2c5; --green: #237a61; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: radial-gradient(circle at 100% 0, #f2c7a7 0, transparent 35%), var(--paper); font-family: Georgia, 'Times New Roman', serif; }
+    main { width: min(1080px, calc(100% - 36px)); margin: 0 auto; padding: 28px 0 72px; }
+    h1 { margin: 26px 0 8px; font-size: 2.4rem; line-height: 1.05; font-weight: 500; }
+    .job { color: var(--muted); font: 13px Arial, sans-serif; margin: 0 0 20px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); padding: 22px; box-shadow: 0 10px 30px rgba(70, 52, 32, .08); }
+    .eyebrow { color: var(--accent); font: 700 12px/1.2 Arial, sans-serif; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+    h2 { font-size: 1.45rem; font-weight: 500; margin: 0 0 14px; }
+    .live-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr); gap: 20px; }
+    .live-video { position: relative; align-self: start; }
+    video { width: 100%; display: block; background: #172026; }
+    .incident-flash { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 11px 18px; background: #b42318; color: #fff; font: 800 18px/1 Arial, sans-serif; letter-spacing: 1px; box-shadow: 0 2px 14px rgba(0, 0, 0, .55); }
+    .incident-flash.is-flashing { animation: accident-flash .42s steps(2, end) infinite; }
+    .live-status { color: var(--muted); font: 13px Arial, sans-serif; margin: 0 0 10px; }
+    progress { width: 100%; height: 8px; accent-color: var(--green); margin-bottom: 14px; }
+    .activity-log { min-height: 260px; max-height: 420px; overflow: auto; background: #172026; color: #dce9e3; padding: 14px; font: 12px/1.7 Consolas, 'Courier New', monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .error { margin-top: 18px; padding: 14px; background: #f9dfd8; color: #8a2d1d; font: 14px/1.5 Arial, sans-serif; }
+    .result { margin-top: 22px; }
+    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0; }
+    .metric { border-top: 2px solid var(--accent); padding-top: 9px; }
+    .metric b { display: block; font-size: 1.8rem; font-weight: 500; }
+    .metric span { color: var(--muted); font: 11px Arial, sans-serif; text-transform: uppercase; letter-spacing: .7px; }
+    .download { display: inline-block; border: 0; background: var(--ink); color: #fff; padding: 14px 18px; font: 700 12px Arial, sans-serif; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; }
+    .download:hover { background: var(--accent); }
+    [hidden] { display: none !important; }
+    @keyframes accident-flash { 50% { background: #fff; color: #b42318; } }
+    @media (max-width: 760px) {
+      main { padding-top: 16px; }
+      h1 { font-size: 2rem; }
+      .live-grid { display: block; }
+      .live-details { margin-top: 16px; }
+      .activity-log { min-height: 180px; }
+      .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .metric b { font-size: 1.45rem; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    {% set active_page = 'analysis' %}
+    {% include '_topbar.html' %}
+    <h1 id="live-title">Live analysis</h1>
+    <p class="job">Analysis ID: {{ job_id }}</p>
+
+    <section class="panel" aria-live="polite">
+      <div class="eyebrow">Live analysis</div>
+      <div class="live-grid">
+        <div class="live-video">
+          <video id="source-preview" controls muted playsinline></video>
+          <div id="incident-flash" class="incident-flash" role="alert" aria-live="assertive" hidden>ACCIDENT</div>
+        </div>
+        <div class="live-details">
+          <p id="live-status" class="live-status">Connecting to frame analysis...</p>
+          <progress id="analysis-progress" max="100" value="0"></progress>
+          <pre id="activity-log" class="activity-log" role="log" aria-live="polite">Starting frame analysis...
+</pre>
+        </div>
+      </div>
+      <div id="analysis-error" class="error" role="alert" hidden></div>
+    </section>
+    <div id="analysis-result"></div>
+  </main>
+  <script>
+    const preview = document.getElementById('source-preview');
+    const liveTitle = document.getElementById('live-title');
+    const liveStatus = document.getElementById('live-status');
+    const progress = document.getElementById('analysis-progress');
+    const activityLog = document.getElementById('activity-log');
+    const logLines = ['Starting frame analysis...'];
+    const analysisError = document.getElementById('analysis-error');
+    const resultContainer = document.getElementById('analysis-result');
+    const incidentFlash = document.getElementById('incident-flash');
+    const eventsUrl = {{ url_for('analysis_events', job_id=job_id)|tojson }};
+    const sourceUrl = {{ url_for('source_video', job_id=job_id)|tojson }};
+    let previewSyncActive = false;
+    let latestAnalyzedTime = 0;
+    let incidentFlashTimeout;
+
+    preview.src = sourceUrl;
+    preview.load();
+    startAnalysis();
+
+    async function startAnalysis() {
+      previewSyncActive = true;
+      requestAnimationFrame(enforcePreviewSync);
+      try {
+        const response = await fetch(eventsUrl);
+        if (!response.ok) {
+          const payload = await response.json();
+          throw new Error(payload.error || 'Could not start the analysis stream.');
+        }
+
+        liveStatus.textContent = 'Waiting for the first prediction...';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let pending = '';
+        let completed = false;
+        while (true) {
+          const { value, done } = await reader.read();
+          pending += decoder.decode(value || new Uint8Array(), { stream: !done });
+          const lines = pending.split('\n');
+          pending = lines.pop();
+          for (const line of lines) {
+            if (!line) continue;
+            const message = JSON.parse(line);
+            if (message.type === 'error') throw new Error(message.message);
+            if (message.type === 'progress') {
+              const total = message.total_frames;
+              liveStatus.textContent = total ? `Analyzed frame ${message.frame} of ${total}` : `Analyzed frame ${message.frame}`;
+              if (total) progress.value = Math.min(100, message.frame / total * 100);
+              latestAnalyzedTime = Math.max(latestAnalyzedTime, message.timestamp_seconds);
+              if (preview.paused && latestAnalyzedTime > preview.currentTime + 0.02) preview.play().catch(() => {});
+              logLines.push(`Frame ${message.frame}${total ? ` / ${total}` : ''}  |  ${message.prediction}  |  ${message.confidence.toFixed(1)}%  |  ${message.elapsed_ms} ms/step`);
+              if (logLines.length > 300) logLines.shift();
+              activityLog.textContent = `${logLines.join('\n')}\n`;
+              activityLog.scrollTop = activityLog.scrollHeight;
+              if (message.accident_detected) flashAccident();
+            }
+            if (message.type === 'complete') {
+              completed = true;
+              previewSyncActive = false;
+              progress.value = 100;
+              liveTitle.textContent = 'Analysis complete';
+              liveStatus.textContent = `Scanned ${message.frames} frames`;
+              logLines.push('Processing complete.');
+              if (logLines.length > 300) logLines.shift();
+              activityLog.textContent = `${logLines.join('\n')}\n`;
+              renderResult(message);
+            }
+          }
+          if (done) break;
+        }
+        if (!completed) throw new Error('The analysis stream ended before completion.');
+      } catch (error) {
+        previewSyncActive = false;
+        analysisError.textContent = error.message;
+        analysisError.hidden = false;
+        liveStatus.textContent = 'Analysis stopped';
+        logLines.push(`Error: ${error.message}`);
+        if (logLines.length > 300) logLines.shift();
+        activityLog.textContent = `${logLines.join('\n')}\n`;
+      }
+    }
+
+    function enforcePreviewSync() {
+      if (!previewSyncActive) return;
+      if (!preview.paused && preview.currentTime >= latestAnalyzedTime - 0.02) preview.pause();
+      requestAnimationFrame(enforcePreviewSync);
+    }
+
+    function flashAccident() {
+      clearTimeout(incidentFlashTimeout);
+      incidentFlash.hidden = false;
+      incidentFlash.classList.remove('is-flashing');
+      void incidentFlash.offsetWidth;
+      incidentFlash.classList.add('is-flashing');
+      incidentFlashTimeout = setTimeout(() => {
+        incidentFlash.classList.remove('is-flashing');
+        incidentFlash.hidden = true;
+      }, 2500);
+    }
+
+    function renderResult(summary) {
+      const section = document.createElement('section');
+      section.className = 'panel result';
+      const eyebrow = document.createElement('div');
+      eyebrow.className = 'eyebrow';
+      eyebrow.textContent = 'Analysis complete';
+      const heading = document.createElement('h2');
+      heading.textContent = 'Processed result';
+      const metrics = document.createElement('div');
+      metrics.className = 'metrics';
+      for (const [value, label] of [
+        [summary.frames, 'Frames scanned'],
+        [summary.accident_frames, 'Accident frames'],
+        [`${summary.highest_probability}%`, 'Highest confidence']
+      ]) {
+        const metric = document.createElement('div');
+        metric.className = 'metric';
+        const number = document.createElement('b');
+        number.textContent = value;
+        const caption = document.createElement('span');
+        caption.textContent = label;
+        metric.append(number, caption);
+        metrics.append(metric);
+      }
+      const video = document.createElement('video');
+      video.controls = true;
+      video.src = summary.video;
+      const download = document.createElement('a');
+      download.className = 'download';
+      download.href = summary.download;
+      download.textContent = 'Download processed video';
+      section.append(eyebrow, heading, metrics, video, download);
+      resultContainer.append(section);
+    }
+  </script>
+</body>
+</html>
