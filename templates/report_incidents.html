@@ -28,13 +28,14 @@
     h2 { margin: 0; font-size: 1.45rem; font-weight: 500; }
     .period { color: var(--muted); font: 12px Arial, sans-serif; }
     .table-wrap { overflow-x: auto; padding: 0; }
-    table { width: 100%; border-collapse: collapse; min-width: 780px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1000px; }
     th { position: sticky; top: 0; background: #edf0eb; color: #48575a; font: 700 11px Arial, sans-serif; text-align: left; text-transform: uppercase; letter-spacing: .5px; }
     th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); }
     td { font: 14px Arial, sans-serif; }
     td small { display: block; color: var(--muted); margin-top: 4px; }
     tbody tr:hover { background: #fff8ee; }
     .death { color: #8a2d1d; font-weight: 700; }
+    .thumb { width: 72px; height: 48px; object-fit: cover; display: block; }
     .source { color: var(--muted); font-size: 12px; }
     .disclaimer { color: var(--muted); font: 12px/1.5 Arial, sans-serif; margin: 14px 0 0; }
     .empty { color: var(--muted); text-align: center; padding: 32px; font: 14px Arial, sans-serif; }
@@ -77,13 +78,16 @@
       <div class="panel table-wrap">
         {% if rows %}
         <table>
-          <thead><tr><th>Date and time</th><th>Area</th><th>Vehicle type</th><th>Deaths</th><th>Data source</th></tr></thead>
+          <thead><tr><th>Date and time</th><th>Area</th><th>Vehicle no.</th><th>Vehicle type / model</th><th>Description</th><th>Photo</th><th>Deaths</th><th>Data source</th></tr></thead>
           <tbody>
             {% for row in rows %}
             <tr>
               <td>{{ row.occurred_at }}<small>Local demo timestamp</small></td>
-              <td><strong>{{ row.area }}</strong><small>{{ row.settlement_type }} area</small></td>
-              <td>{{ row.vehicle_type }}</td>
+              <td><strong>{{ row.area }}</strong><small>{{ row.location }}</small></td>
+              <td>{{ row.vehicle_number or "-" }}</td>
+              <td>{{ row.vehicle_type }}<small>{{ row.vehicle_model }}</small></td>
+              <td>{{ row.description }}</td>
+              <td><a href="{{ url_for('static', filename='images/accidents/' + row.image_file) }}" target="_blank" rel="noopener"><img class="thumb" src="{{ url_for('static', filename='images/accidents/' + row.image_file) }}" alt="Accident photo" loading="lazy"></a></td>
               <td class="{{ 'death' if row.deaths else '' }}">{{ row.deaths }}</td>
               <td class="source">{{ row.source }}</td>
             </tr>

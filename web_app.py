@@ -11,7 +11,15 @@ from flask import Flask, Response, abort, redirect, render_template, request, se
 from werkzeug.utils import secure_filename
 
 from detection import AccidentDetectionModel
-from report_data import get_area_period_report, get_incident_report, get_report_areas, initialize_reports_database
+from report_data import (
+    get_area_period_report,
+    get_incident_report,
+    get_report_areas,
+    get_sample_vehicle_numbers,
+    initialize_reports_database,
+    normalize_vehicle_number,
+    search_vehicle_incidents,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "web_uploads"
@@ -124,7 +132,23 @@ def process_video(input_path, output_path):
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html", error=request.args.get("error"))
+    query = request.args.get("vehicle", "").strip()
+    searched = bool(query)
+    results = search_vehicle_incidents(query) if searched else []
+    return render_template(
+        "index.html",
+        query=query,
+        normalized=normalize_vehicle_number(query),
+        searched=searched,
+        results=results,
+        total_deaths=sum(row["deaths"] for row in results),
+        samples=get_sample_vehicle_numbers(),
+    )
+
+
+@app.route("/analyze-video", methods=["GET"])
+def video_page():
+    return render_template("video.html", error=request.args.get("error"))
 
 
 def report_filters():
@@ -200,9 +224,9 @@ def incident_report():
 def analyze():
     uploaded_file = request.files.get("video")
     if uploaded_file is None or uploaded_file.filename == "":
-        return redirect(url_for("index", error="Choose a video file first."))
+        return redirect(url_for("video_page", error="Choose a video file first."))
     if not allowed_file(uploaded_file.filename):
-        return redirect(url_for("index", error="Supported formats: MP4, AVI, MOV, MKV, and WEBM."))
+        return redirect(url_for("video_page", error="Supported formats: MP4, AVI, MOV, MKV, and WEBM."))
 
     job_id = uuid4().hex
     filename = secure_filename(uploaded_file.filename)
