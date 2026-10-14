@@ -1,15 +1,20 @@
 from pathlib import Path
 from datetime import date, timedelta
 import json
+import os
+import secrets
 import subprocess
 import time
 from uuid import uuid4
 
 import cv2
 import numpy as np
-from flask import Flask, Response, abort, redirect, render_template, request, send_from_directory, stream_with_context, url_for
+from authlib.integrations.flask_client import OAuth
+from dotenv import load_dotenv
+from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_from_directory, session, stream_with_context, url_for
 from werkzeug.utils import secure_filename
 
+from auth import UserStore, load_current_user, login_required, login_user, logout_user, safe_next_url
 from detection import AccidentDetectionModel
 from report_data import (
     get_area_period_report,
@@ -22,6 +27,7 @@ from report_data import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 UPLOAD_DIR = BASE_DIR / "web_uploads"
 RESULT_DIR = BASE_DIR / "web_results"
 ALLOWED_EXTENSIONS = {"mp4", "avi", "mov", "mkv", "webm"}
@@ -32,10 +38,55 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 RESULT_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__)
+app.config.update(
+    SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", secrets.token_urlsafe(32)),
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE", "").lower() == "true",
+)
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024
+if "FLASK_SECRET_KEY" not in os.environ:
+    app.logger.warning("FLASK_SECRET_KEY is not configured; users will be signed out when the server restarts.")
+
+user_store = UserStore(BASE_DIR / "instance" / "users.sqlite3")
+user_store.initialize()
+google_client_id = os.environ.get("GOOGLE_CLIENT_ID")
+google_client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+google_enabled = bool(google_client_id and google_client_secret)
+oauth = OAuth(app)
+if google_enabled:
+    oauth.register(
+        name="google",
+        client_id=google_client_id,
+        client_secret=google_client_secret,
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+
 model = AccidentDetectionModel(str(BASE_DIR / "model.json"), str(BASE_DIR / "model_weights.keras"))
 analysis_jobs = {}
 initialize_reports_database()
+
+
+@app.before_request
+def load_user():
+    load_current_user(user_store)
+
+
+@app.before_request
+def validate_csrf_token():
+    if request.method == "POST":
+        submitted_token = request.form.get("csrf_token", "")
+        session_token = session.get("csrf_token", "")
+        if not session_token or not secrets.compare_digest(submitted_token, session_token):
+            abort(400, "The form expired or could not be verified. Please try again.")
+
+
+@app.context_processor
+def inject_csrf_token():
+    if "csrf_token" not in session:
+        session["csrf_token"] = secrets.token_urlsafe(32)
+    return {"csrf_token": session["csrf_token"]}
 
 
 def allowed_file(filename):
@@ -130,7 +181,99 @@ def process_video(input_path, output_path):
     }
 
 
+def render_auth_page(mode):
+    return render_template(
+        "login.html",
+        mode=mode,
+        next_url=request.values.get("next", ""),
+        google_enabled=google_enabled,
+    )
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if g.current_user is not None:
+        return redirect(safe_next_url(request.values.get("next")))
+    if request.method == "GET":
+        return render_auth_page("login")
+
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    user = user_store.authenticate_email_user(email, password)
+    if user is None:
+        flash("The email address or password is incorrect.")
+        return render_auth_page("login"), 401
+    login_user(user)
+    return redirect(safe_next_url(request.form.get("next")))
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if g.current_user is not None:
+        return redirect(safe_next_url(request.values.get("next")))
+    if request.method == "GET":
+        return render_auth_page("register")
+
+    display_name = request.form.get("display_name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+    if not display_name or len(display_name) > 100:
+        flash("Enter a name with no more than 100 characters.")
+        return render_auth_page("register"), 400
+    if not email or len(email) > 254:
+        flash("Enter a valid email address.")
+        return render_auth_page("register"), 400
+    if len(password) < 8:
+        flash("Use a password of at least 8 characters.")
+        return render_auth_page("register"), 400
+
+    user = user_store.create_email_user(email, display_name, password)
+    if user is None:
+        flash("An account already exists for this email address. Please sign in.")
+        return render_auth_page("register"), 409
+    login_user(user)
+    return redirect(safe_next_url(request.form.get("next")))
+
+
+@app.route("/login/google")
+def google_login():
+    if not google_enabled:
+        flash("Google sign-in is not configured.")
+        return redirect(url_for("login", next=request.args.get("next", "")))
+    nonce = secrets.token_urlsafe(24)
+    session["google_oauth_nonce"] = nonce
+    session["google_login_next"] = request.args.get("next", "")
+    return oauth.google.authorize_redirect(url_for("google_authorize", _external=True), nonce=nonce)
+
+
+@app.route("/login/google/authorize")
+def google_authorize():
+    if not google_enabled:
+        abort(503, "Google sign-in is not configured.")
+    if request.args.get("error"):
+        flash("Google sign-in was cancelled or could not be completed.")
+        return redirect(url_for("login"))
+
+    token = oauth.google.authorize_access_token()
+    claims = oauth.google.parse_id_token(token, nonce=session.pop("google_oauth_nonce", None))
+    email = claims.get("email", "").strip().lower()
+    subject = claims.get("sub")
+    if not subject or not email or not claims.get("email_verified"):
+        abort(403, "Google did not provide a verified email address.")
+    display_name = claims.get("name", "").strip() or email
+    user = user_store.find_or_create_google_user(subject, email, display_name[:100])
+    login_user(user)
+    return redirect(safe_next_url(session.pop("google_login_next", "")))
+
+
+@app.post("/logout")
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
+
 @app.route("/", methods=["GET"])
+@login_required
 def index():
     query = request.args.get("vehicle", "").strip()
     searched = bool(query)
@@ -147,6 +290,7 @@ def index():
 
 
 @app.route("/analyze-video", methods=["GET"])
+@login_required
 def video_page():
     return render_template("video.html", error=request.args.get("error"))
 
@@ -183,11 +327,13 @@ def report_filters():
 
 
 @app.route("/reports")
+@login_required
 def reports():
     return redirect(url_for("area_period_report"))
 
 
 @app.route("/reports/areas")
+@login_required
 def area_period_report():
     filters = report_filters()
     area_id = int(filters["area"]) if filters["area"] else None
@@ -207,6 +353,7 @@ def area_period_report():
 
 
 @app.route("/reports/incidents")
+@login_required
 def incident_report():
     filters = report_filters()
     area_id = int(filters["area"]) if filters["area"] else None
@@ -221,6 +368,7 @@ def incident_report():
 
 
 @app.route("/analyze", methods=["POST"])
+@login_required
 def analyze():
     uploaded_file = request.files.get("video")
     if uploaded_file is None or uploaded_file.filename == "":
@@ -246,6 +394,7 @@ def analyze():
 
 
 @app.route("/analysis/<job_id>")
+@login_required
 def analysis_page(job_id):
     if job_id not in analysis_jobs:
         abort(404)
@@ -253,6 +402,7 @@ def analysis_page(job_id):
 
 
 @app.route("/uploads/<job_id>")
+@login_required
 def source_video(job_id):
     job = analysis_jobs.get(job_id)
     if job is None or not job["input_path"].is_file():
@@ -261,6 +411,7 @@ def source_video(job_id):
 
 
 @app.route("/analysis/<job_id>/events")
+@login_required
 def analysis_events(job_id):
     job = analysis_jobs.get(job_id)
     if job is None:
@@ -295,6 +446,7 @@ def analysis_events(job_id):
 
 
 @app.route("/results/<path:filename>")
+@login_required
 def results(filename):
     if not (RESULT_DIR / filename).is_file():
         abort(404)
@@ -302,6 +454,7 @@ def results(filename):
 
 
 @app.route("/download/<path:filename>")
+@login_required
 def download(filename):
     if not (RESULT_DIR / filename).is_file():
         abort(404)

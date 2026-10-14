@@ -35,12 +35,16 @@
 }
 .nav-links a:hover { background: rgba(255, 255, 255, .12); color: #fff; }
 .nav-links a[aria-current="page"] { background: linear-gradient(135deg, #ff7a59, #d63f2a); color: #fff; box-shadow: 0 4px 12px rgba(214, 63, 42, .4); }
+.nav-user { padding: 0 8px; color: #f2c7a7; font: 700 11px/1 Arial, sans-serif; white-space: nowrap; }
+.logout-form { margin: 0; }
+.logout-form button { min-height: 38px; border: 0; border-radius: 999px; padding: 0 14px; color: #dbe5e1; background: transparent; font: 700 12px/1 Arial, sans-serif; cursor: pointer; white-space: nowrap; }
+.logout-form button:hover { background: rgba(255, 255, 255, .12); color: #fff; }
 .site-brand:focus-visible, .nav-links a:focus-visible { outline: 2px solid #f2c7a7; outline-offset: 3px; }@media (max-width: 720px) {
   .site-nav { position: static; align-items: stretch; flex-direction: column; gap: 12px; padding: 13px; }
   .nav-links { justify-content: stretch; flex-wrap: wrap; border-radius: 16px; }
   .nav-links a { flex: 1 1 auto; justify-content: center; padding: 0 8px; }
+  .nav-user, .logout-form { display: flex; align-items: center; justify-content: center; }
 }
 @media (max-width: 380px) {
   .nav-links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-

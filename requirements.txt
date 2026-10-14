@@ -9,4 +9,5 @@ jupyter
 ipykernel
 keras
 flask
-
+Authlib
+python-dotenv

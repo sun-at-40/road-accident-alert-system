@@ -9,3 +9,7 @@ __pycache__/
 accident_photos/
 data/
 instance/
+.venv/
+.venv-1/
+.myenv/
+myenv/

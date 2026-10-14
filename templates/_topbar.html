@@ -17,5 +17,10 @@
     <a href="{{ url_for('video_page') }}" {% if active_page == 'video' %}aria-current="page"{% endif %}>Analyze video</a>
     <a href="{{ url_for('area_period_report') }}" {% if active_page == 'areas' %}aria-current="page"{% endif %}>Area report</a>
     <a href="{{ url_for('incident_report') }}" {% if active_page == 'incidents' %}aria-current="page"{% endif %}>Incident report</a>
+    <span class="nav-user">{{ g.current_user["display_name"] }}</span>
+    <form class="logout-form" method="post" action="{{ url_for('logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">Sign out</button>
+    </form>
   </div>
 </nav>

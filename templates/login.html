@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ 'Create account' if mode == 'register' else 'Sign in' }} | Road Incident Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+  <style>
+    :root { --ink: #172026; --muted: #69767c; --paper: #f4f0e8; --panel: #fffdf8; --accent: #e15a3d; --line: #d9d2c5; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; color: var(--ink); background: radial-gradient(circle at 100% 0, #f2c7a7 0, transparent 40%), var(--paper); font-family: Georgia, 'Times New Roman', serif; }
+    .auth-card { width: min(100%, 440px); padding: 36px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 14px 38px rgba(70, 52, 32, .14); }
+    h1 { margin: 0 0 8px; font-size: 2.25rem; font-weight: 500; }
+    p { color: var(--muted); font: 14px/1.5 Arial, sans-serif; }
+    label { display: block; margin: 18px 0 6px; color: var(--muted); font: 700 11px Arial, sans-serif; letter-spacing: .5px; text-transform: uppercase; }
+    input { width: 100%; min-height: 46px; border: 1px solid var(--line); padding: 10px; color: var(--ink); background: #fff; font: 15px Arial, sans-serif; }
+    button, .google-button { display: block; width: 100%; min-height: 46px; margin-top: 22px; border: 0; padding: 12px; color: #fff; background: var(--ink); font: 700 12px Arial, sans-serif; letter-spacing: .7px; text-align: center; text-decoration: none; text-transform: uppercase; cursor: pointer; }
+    button:hover, .google-button:hover { background: var(--accent); }
+    .google-button { margin-top: 14px; background: #fff; border: 1px solid var(--line); color: var(--ink); }
+    .google-button:hover { background: #f4f0e8; color: var(--ink); }
+    .message { margin: 18px 0 0; padding: 12px; background: #f9dfd8; color: #8a2d1d; font: 14px/1.4 Arial, sans-serif; }
+    .switch { margin-top: 22px; text-align: center; }
+    .switch a { color: #a93c28; font-weight: 700; }
+    .divider { display: flex; align-items: center; gap: 12px; margin: 22px 0 0; color: var(--muted); font: 11px Arial, sans-serif; text-transform: uppercase; }
+    .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+  </style>
+</head>
+<body>
+  <main class="auth-card">
+    <h1>{{ 'Create your account' if mode == 'register' else 'Welcome back' }}</h1>
+    <p>{{ 'Use your email and password to access the Road Incident Monitor.' if mode == 'register' else 'Sign in to access the Road Incident Monitor.' }}</p>
+    {% with messages = get_flashed_messages() %}
+      {% for message in messages %}<div class="message" role="alert">{{ message }}</div>{% endfor %}
+    {% endwith %}
+    <form method="post" action="{{ url_for('register' if mode == 'register' else 'login') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      {% if mode == 'register' %}
+      <label for="display_name">Name</label>
+      <input id="display_name" name="display_name" type="text" autocomplete="name" maxlength="100" required>
+      {% endif %}
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" minlength="8" required>
+      <button type="submit">{{ 'Create account' if mode == 'register' else 'Sign in' }}</button>
+    </form>
+    <div class="divider">or</div>
+    {% if google_enabled %}
+    <a class="google-button" href="{{ url_for('google_login', next=next_url) }}">Continue with Google</a>
+    {% else %}
+    <p>Google sign-in is not configured yet. Contact the site administrator.</p>
+    {% endif %}
+    <p class="switch">
+      {% if mode == 'register' %}
+      Already have an account? <a href="{{ url_for('login', next=next_url) }}">Sign in</a>
+      {% else %}
+      Need an account? <a href="{{ url_for('register', next=next_url) }}">Create one</a>
+      {% endif %}
+    </p>
+  </main>
+</body>
+</html>
